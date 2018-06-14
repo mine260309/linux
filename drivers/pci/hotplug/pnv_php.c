@@ -328,12 +328,47 @@ out:
 	return ret;
 }
 
+static int pnv_php_get_power_state(struct hotplug_slot *slot, u8 *state)
+{
+	struct pnv_php_slot *php_slot = slot->private;
+	uint8_t power_state = OPAL_PCI_SLOT_POWER_ON;
+	int ret;
+
+	/*
+	 * Retrieve power status from firmware. If we fail
+	 * getting that, the power status fails back to
+	 * be on.
+	 */
+	ret = pnv_pci_get_power_state(php_slot->id, &power_state);
+	if (ret) {
+		dev_warn(&php_slot->pdev->dev, "Error %d getting power status\n",
+			 ret);
+	} else {
+		*state = power_state;
+		slot->info->power_status = power_state;
+	}
+
+	return 0;
+}
+
 int pnv_php_set_slot_power_state(struct hotplug_slot *slot,
 				 uint8_t state)
 {
 	struct pnv_php_slot *php_slot = slot->private;
 	struct opal_msg msg;
 	int ret;
+	uint8_t power_status;
+
+	/*
+	 * Older firmware will return OPAL_BUSY if you attempt to
+	 * set the state to itself (i.e. On -> On, or Off -> Off),
+	 * so check for that.
+	 */
+	ret = pnv_php_get_power_state(slot, &power_status);
+	if (ret > 0)
+		return ret;
+	if (power_status == state)
+		return 0;
 
 	ret = pnv_pci_set_power_state(php_slot->id, state, &msg);
 	if (ret > 0) {
@@ -360,29 +395,6 @@ int pnv_php_set_slot_power_state(struct hotplug_slot *slot,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(pnv_php_set_slot_power_state);
-
-static int pnv_php_get_power_state(struct hotplug_slot *slot, u8 *state)
-{
-	struct pnv_php_slot *php_slot = slot->private;
-	uint8_t power_state = OPAL_PCI_SLOT_POWER_ON;
-	int ret;
-
-	/*
-	 * Retrieve power status from firmware. If we fail
-	 * getting that, the power status fails back to
-	 * be on.
-	 */
-	ret = pnv_pci_get_power_state(php_slot->id, &power_state);
-	if (ret) {
-		pci_warn(php_slot->pdev, "Error %d getting power status\n",
-			 ret);
-	} else {
-		*state = power_state;
-		slot->info->power_status = power_state;
-	}
-
-	return 0;
-}
 
 static int pnv_php_get_adapter_state(struct hotplug_slot *slot, u8 *state)
 {
@@ -414,87 +426,68 @@ static int pnv_php_set_attention_state(struct hotplug_slot *slot, u8 state)
 	return 0;
 }
 
-static int pnv_php_enable(struct pnv_php_slot *php_slot, bool rescan)
+static int pnv_php_enable(struct pnv_php_slot *php_slot, bool initial)
 {
 	struct hotplug_slot *slot = &php_slot->slot;
 	uint8_t presence = OPAL_PCI_SLOT_EMPTY;
-	uint8_t power_status = OPAL_PCI_SLOT_POWER_ON;
+	uint8_t power = OPAL_PCI_SLOT_POWER_ON;
 	int ret;
 
-	/* Check if the slot has been configured */
 	if (php_slot->state != PNV_PHP_STATE_REGISTERED)
 		return 0;
 
-	/* Retrieve slot presence status */
+	/*
+	 * If we don't have a presence detect then don't bother. If your
+	 * system doesn't provide presence detect on a hotplug slot then
+	 * your system is broken and you should fix it.
+	 */
 	ret = pnv_php_get_adapter_state(slot, &presence);
+	dev_warn(&php_slot->pdev->dev, "presence %d (%d)\n", presence, ret);
 	if (ret)
 		return ret;
-
-	/*
-	 * Proceed if there have nothing behind the slot. However,
-	 * we should leave the slot in registered state at the
-	 * beginning. Otherwise, the PCI devices inserted afterwards
-	 * won't be probed and populated.
-	 */
 	if (presence == OPAL_PCI_SLOT_EMPTY) {
-		if (!php_slot->power_state_check) {
-			php_slot->power_state_check = true;
-
-			return 0;
-		}
-
-		goto scan;
+		dev_warn(&php_slot->pdev->dev, "unpopulated, slot empty\n");
+		return 0;
 	}
+
+	ret = pnv_php_get_power_state(slot, &power);
+	dev_warn(&php_slot->pdev->dev, "initial power state %d (%d)\n", power, ret);
+	if (ret)
+		return ret;
+
 
 	/*
-	 * If the power supply to the slot is off, we can't detect
-	 * adapter presence state. That means we have to turn the
-	 * slot on before going to probe slot's presence state.
+	 * If we're enabling a newly registered slot then we assume
+	 * the DT is already populated if the slot is powered on.
 	 *
-	 * On the first time, we don't change the power status to
-	 * boost system boot with assumption that the firmware
-	 * supplies consistent slot power status: empty slot always
-	 * has its power off and non-empty slot has its power on.
+	 * TODO: Check that the Linux DT matches the actual topology.
+	 *       There might be interactions with EEH we need to be
+	 *       concerned about here...
 	 */
-	if (!php_slot->power_state_check) {
-		php_slot->power_state_check = true;
+	if (power == OPAL_PCI_SLOT_POWER_ON) {
+		if (!initial)
+			dev_warn(&php_slot->pdev->dev, "ATTEMPTED TO POPULATE ALREADY POWERED ON SLOT!!!!\n");
 
-		ret = pnv_php_get_power_state(slot, &power_status);
-		if (ret)
-			return ret;
+		php_slot->state = PNV_PHP_STATE_POPULATED;
 
-		if (power_status != OPAL_PCI_SLOT_POWER_ON)
-			return 0;
+		return 0;
 	}
 
-	/* Check the power status. Scan the slot if it is already on */
-	ret = pnv_php_get_power_state(slot, &power_status);
-	if (ret)
-		return ret;
-
-	if (power_status == OPAL_PCI_SLOT_POWER_ON)
-		goto scan;
-
-	/* Power is off, turn it on and then scan the slot */
+	dev_warn(&php_slot->pdev->dev, "powering on...\n");
 	ret = pnv_php_set_slot_power_state(slot, OPAL_PCI_SLOT_POWER_ON);
-	if (ret)
+	if (ret) {
+		dev_warn(&php_slot->pdev->dev, "after set_power_state %d (%d)\n", power, ret);
 		return ret;
-
-scan:
-	if (presence == OPAL_PCI_SLOT_PRESENT) {
-		if (rescan) {
-			pci_lock_rescan_remove();
-			pci_hp_add_devices(php_slot->bus);
-			pci_unlock_rescan_remove();
-		}
-
-		/* Rescan for child hotpluggable slots */
-		php_slot->state = PNV_PHP_STATE_POPULATED;
-		if (rescan)
-			pnv_php_register(php_slot->dn);
-	} else {
-		php_slot->state = PNV_PHP_STATE_POPULATED;
 	}
+
+	pci_lock_rescan_remove();
+	pci_hp_add_devices(php_slot->bus);
+	pci_unlock_rescan_remove();
+
+	php_slot->state = PNV_PHP_STATE_POPULATED;
+	dev_warn(&php_slot->pdev->dev, "populated!\n");
+
+	pnv_php_register(php_slot->dn);
 
 	return 0;
 }
@@ -504,16 +497,14 @@ static int pnv_php_enable_slot(struct hotplug_slot *slot)
 	struct pnv_php_slot *php_slot = container_of(slot,
 						     struct pnv_php_slot, slot);
 
-	return pnv_php_enable(php_slot, true);
+	return pnv_php_enable(php_slot, false);
 }
 
 static int pnv_php_disable_slot(struct hotplug_slot *slot)
 {
 	struct pnv_php_slot *php_slot = slot->private;
 	int ret;
-
-	if (php_slot->state != PNV_PHP_STATE_POPULATED)
-		return 0;
+	uint8_t power = 0;
 
 	/* Remove all devices behind the slot */
 	pci_lock_rescan_remove();
@@ -524,7 +515,16 @@ static int pnv_php_disable_slot(struct hotplug_slot *slot)
 	pnv_php_unregister(php_slot->dn);
 
 	/* Notify firmware and remove device nodes */
+
+	ret = pnv_php_get_power_state(slot, &power);
+	dev_warn(&php_slot->pdev->dev, "%s: before: power = %d (%d)\n", __func__, power, ret);
+
 	ret = pnv_php_set_slot_power_state(slot, OPAL_PCI_SLOT_POWER_OFF);
+	dev_warn(&php_slot->pdev->dev, "%s: set_slot_power_state ret = %d\n", __func__, ret);
+	
+
+	ret = pnv_php_get_power_state(slot, &power);
+	dev_warn(&php_slot->pdev->dev, "%s: after: power = %d (%d)\n", __func__, power, ret);
 
 	php_slot->state = PNV_PHP_STATE_REGISTERED;
 	return ret;
@@ -552,6 +552,46 @@ static void pnv_php_release(struct pnv_php_slot *php_slot)
 	pnv_php_put_slot(php_slot->parent);
 }
 
+
+/// XXX DUMB HACK
+static int pnv_pci_get_slot_id2(struct device_node *np, uint64_t *id)
+{
+	struct device_node *parent = np;
+	u32 bdfn;
+	u64 phbid;
+	int ret;
+
+	ret = of_property_read_u32(np, "reg", &bdfn);
+	if (ret)
+		return -ENXIO;
+
+	bdfn = ((bdfn & 0x00ffff00) >> 8);
+	while ((parent = of_get_parent(parent))) {
+		if (!PCI_DN(parent)) {
+			of_node_put(parent);
+			break;
+		}
+
+		if (!of_device_is_compatible(parent, "ibm,ioda2-phb") &&
+			!of_device_is_compatible(parent, "ibm,ioda3-phb")) {
+			of_node_put(parent);
+			continue;
+		}
+
+		ret = of_property_read_u64(parent, "ibm,opal-phbid", &phbid);
+		if (ret) {
+			of_node_put(parent);
+			return -ENXIO;
+		}
+
+		*id = PCI_SLOT_ID(phbid, bdfn);
+		return 0;
+	}
+
+	return -ENODEV;
+}
+/// XXX DUMB HACK
+
 static struct pnv_php_slot *pnv_php_alloc_slot(struct device_node *dn)
 {
 	struct pnv_php_slot *php_slot;
@@ -564,7 +604,7 @@ static struct pnv_php_slot *pnv_php_alloc_slot(struct device_node *dn)
 	if (ret)
 		return NULL;
 
-	if (pnv_pci_get_slot_id(dn, &id))
+	if (pnv_pci_get_slot_id2(dn, &id))
 		return NULL;
 
 	bus = pci_find_bus_by_node(dn);
@@ -709,8 +749,13 @@ static irqreturn_t pnv_php_interrupt(int irq, void *data)
 	int ret;
 
 	pcie_capability_read_word(pdev, PCI_EXP_SLTSTA, &sts);
+
+	pr_err("%s: pdc %d lldc %d\n", php_slot->name,
+		!!(sts & PCI_EXP_SLTSTA_PDC), !!(sts & PCI_EXP_SLTSTA_DLLSC));
+
 	sts &= (PCI_EXP_SLTSTA_PDC | PCI_EXP_SLTSTA_DLLSC);
 	pcie_capability_write_word(pdev, PCI_EXP_SLTSTA, sts);
+
 	if (sts & PCI_EXP_SLTSTA_DLLSC) {
 		pcie_capability_read_word(pdev, PCI_EXP_LNKSTA, &lsts);
 		added = !!(lsts & PCI_EXP_LNKSTA_DLLLA);
@@ -863,26 +908,39 @@ static int pnv_php_register_one(struct device_node *dn)
 	u32 prop32;
 	int ret;
 
+	pr_err("try register slot %pOF...\n", dn);
+
 	/* Check if it's hotpluggable slot */
 	ret = of_property_read_u32(dn, "ibm,slot-pluggable", &prop32);
-	if (ret || !prop32)
+	if (ret || !prop32) {
+		pr_err("\t failed due to missing slot-pluggable\n");
 		return -ENXIO;
+	}
 
+	/* when is this set? for all PHB direct slots? */
 	ret = of_property_read_u32(dn, "ibm,reset-by-firmware", &prop32);
-	if (ret || !prop32)
+	if (ret || !prop32) {
+		pr_err("\t failed due to reset-by-firmware\n");
 		return -ENXIO;
+	}
 
 	php_slot = pnv_php_alloc_slot(dn);
-	if (!php_slot)
+	if (!php_slot) {
+		pr_err("slot alloc failed!\n");
 		return -ENODEV;
+	}
 
 	ret = pnv_php_register_slot(php_slot);
-	if (ret)
+	if (ret) {
+		pr_err("register failed!\n");
 		goto free_slot;
+	}
 
-	ret = pnv_php_enable(php_slot, false);
-	if (ret)
-		goto unregister_slot;
+	/*
+	 * Failing to enable the slot is non-fatal. We still want to keep around
+	 * slot in the registered state so we can try online it later.
+	 */
+	pnv_php_enable(php_slot, true);
 
 	/* Enable interrupt if the slot supports surprise hotplug */
 	ret = of_property_read_u32(dn, "ibm,slot-surprise-pluggable", &prop32);
@@ -891,8 +949,6 @@ static int pnv_php_register_one(struct device_node *dn)
 
 	return 0;
 
-unregister_slot:
-	pnv_php_unregister_one(php_slot->dn);
 free_slot:
 	pnv_php_put_slot(php_slot);
 	return ret;
@@ -942,8 +998,16 @@ static int __init pnv_php_init(void)
 	struct device_node *dn;
 
 	pr_info(DRIVER_DESC " version: " DRIVER_VERSION "\n");
-	for_each_compatible_node(dn, NULL, "ibm,ioda2-phb")
+
+	for_each_compatible_node(dn, NULL, "ibm,ioda2-phb") {
+		pr_err("foudn ioda2-phb %pOF...\n", dn);
 		pnv_php_register(dn);
+	}
+
+	for_each_compatible_node(dn, NULL, "ibm,ioda3-phb") {
+		pr_err("foudn ioda3-phb %pOF...\n", dn);
+		pnv_php_register(dn);
+	}
 
 	return 0;
 }
@@ -953,6 +1017,9 @@ static void __exit pnv_php_exit(void)
 	struct device_node *dn;
 
 	for_each_compatible_node(dn, NULL, "ibm,ioda2-phb")
+		pnv_php_unregister(dn);
+
+	for_each_compatible_node(dn, NULL, "ibm,ioda3-phb")
 		pnv_php_unregister(dn);
 }
 

@@ -71,7 +71,6 @@ struct pnv_php_slot {
 	struct device_node		*dn;
 	struct pci_dev			*pdev;
 	struct pci_bus			*bus;
-	bool				power_state_check;
 	void				*fdt;
 	void				*dt;
 	struct of_changeset		ocs;
