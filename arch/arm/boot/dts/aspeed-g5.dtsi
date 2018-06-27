@@ -206,6 +206,13 @@
 				reg = <0x1e720000 0x9000>;	// 36K
 			};
 
+			sdhci: sdhci@1e740000{
+				compatible = "simple-bus";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0 0x1e740000 0x1000>;
+			};
+
 			gpio: gpio@1e780000 {
 				#gpio-cells = <2>;
 				gpio-controller;

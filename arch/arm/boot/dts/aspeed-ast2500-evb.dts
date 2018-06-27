@@ -99,3 +99,17 @@
      status = "okay";
      memory-region = <&gfx_memory>;
 };
+
+&sdhci {
+	sdhci_slot0: sdhci_slot0@100 {
+		status = "okay";
+		compatible = "aspeed,ast2500-sdhci";
+		reg = <0x100 0x100>;
+		sdhci,auto-cmd12;
+		interrupts = <26>;
+		clocks = <&syscon ASPEED_CLK_GATE_SDCLK>;
+		slot = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_sd1_default>;
+	};
+};
