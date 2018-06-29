@@ -18,7 +18,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
-//#include <linux/mmc/sdhci-aspeed-data.h>
+#include <linux/mmc/sdhci-aspeed-data.h>
 #include <linux/reset.h>
 #include "sdhci-pltfm.h"
 
@@ -75,9 +75,9 @@ out:
 #if 1
 static void sdhci_aspeed_set_bus_width(struct sdhci_host *host, int width)
 {
-    /*
+    printk(KERN_WARNING "MINEDBG: %s:%d %s width: %d\n", __FILE__, __LINE__, __func__, width);
 	struct sdhci_pltfm_host *pltfm_priv = sdhci_priv(host);
-	struct aspeed_platform_data *sdhci_irq = sdhci_pltfm_priv(pltfm_priv);
+	struct aspeed_sdhci_irq *sdhci_irq = sdhci_pltfm_priv(pltfm_priv);
 
 	u8 ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
 
@@ -94,8 +94,8 @@ static void sdhci_aspeed_set_bus_width(struct sdhci_host *host, int width)
 		ctrl &= ~SDHCI_CTRL_4BITBUS;
 
 	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
-    */
 
+    /*
     printk(KERN_WARNING "MINEDBG: %s:%d %s width: %d\n", __FILE__, __LINE__, __func__, width);
 	u8 ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
 
@@ -105,6 +105,7 @@ static void sdhci_aspeed_set_bus_width(struct sdhci_host *host, int width)
 		ctrl &= ~SDHCI_CTRL_4BITBUS;
 
 	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+    */
 }
 #endif
 
@@ -137,9 +138,9 @@ static struct sdhci_pltfm_data sdhci_aspeed_pdata = {
 	.ops = &sdhci_aspeed_ops,
 };
 
-static struct aspeed_platform_data {
-    char test[16];
-};
+//static struct aspeed_platform_data {
+//    char test[16];
+//};
 
 static int sdhci_aspeed_probe(struct platform_device *pdev)
 {
@@ -147,17 +148,18 @@ static int sdhci_aspeed_probe(struct platform_device *pdev)
 	struct device_node *pnode;
 	struct device_node *np = pdev->dev.of_node;
 	struct sdhci_pltfm_host *pltfm_host;
-	struct aspeed_platform_data *sdhci_pdata;
+//	struct aspeed_platform_data *sdhci_pdata;
+	struct aspeed_sdhci_irq *sdhci_irq;
 	struct reset_control *reset;	
 
 	int ret;
 
-	host = sdhci_pltfm_init(pdev, &sdhci_aspeed_pdata, sizeof(struct aspeed_platform_data));
+	host = sdhci_pltfm_init(pdev, &sdhci_aspeed_pdata, sizeof(struct aspeed_sdhci_irq));
 	if (IS_ERR(host))
 		return PTR_ERR(host);
 
 	pltfm_host = sdhci_priv(host);
-	sdhci_pdata = sdhci_pltfm_priv(pltfm_host);
+	sdhci_irq = sdhci_pltfm_priv(pltfm_host);
 
 	host->quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN;
 	host->quirks2 = SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN;
@@ -172,11 +174,11 @@ static int sdhci_aspeed_probe(struct platform_device *pdev)
     }
     printk(KERN_WARNING "MINEDBG: %s:%d %s, clk: %u\n", __FILE__, __LINE__, __func__, clk_get_rate(pltfm_host->clk));
     clk_prepare_enable(pltfm_host->clk);
-    strcpy(sdhci_pdata->test, "MINE-TEST");
+//    strcpy(sdhci_pdata->test, "MINE-TEST");
 
-//	pnode = of_parse_phandle(np, "interrupt-parent", 0);
-//	if(pnode)
-//		memcpy(sdhci_pdata, pnode->data, sizeof(struct aspeed_platform_data));
+	pnode = of_parse_phandle(np, "interrupt-parent", 0);
+	if(pnode)
+		memcpy(sdhci_irq, pnode->data, sizeof(struct aspeed_sdhci_irq));
 
 	ret = mmc_of_parse(host->mmc);
 	if (ret)

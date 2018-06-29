@@ -101,15 +101,39 @@
 };
 
 &sdhci {
+	sdhci_ic: interrupt-controller@0 {
+		status = "okay";
+		#interrupt-cells = <1>;
+		compatible = "aspeed,aspeed-sdhci-irq";
+		clocks = <&syscon ASPEED_CLK_GATE_SDCLK>;
+		reg = <0x0 0x100>;
+		interrupts = <26>;
+		interrupt-controller;
+	};
+	
 	sdhci_slot0: sdhci_slot0@100 {
 		status = "okay";
 		compatible = "aspeed,ast2500-sdhci";
 		reg = <0x100 0x100>;
 		sdhci,auto-cmd12;
-		interrupts = <26>;
-		clocks = <&syscon ASPEED_CLK_GATE_SDCLK>;
+		interrupts = <0>;
+		interrupt-parent = <&sdhci_ic>;
+		clocks = <&syscon ASPEED_CLK_SDIO>;
 		slot = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_sd1_default>;
+	};
+
+	sdhci_slot1: sdhci_slot0@200 {
+		status = "okay";
+		compatible = "aspeed,ast2500-sdhci";
+		reg = <0x200 0x100>;
+		sdhci,auto-cmd12;
+		interrupts = <1>;
+		interrupt-parent = <&sdhci_ic>;
+		clocks = <&syscon ASPEED_CLK_SDIO>;
+		slot = <1>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_sd2_default>;
 	};
 };
