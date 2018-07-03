@@ -632,7 +632,6 @@ static struct pnv_php_slot *pnv_php_alloc_slot(struct device_node *dn)
 	php_slot->pdev	                = bus->self;
 	php_slot->bus	                = bus;
 	php_slot->id	                = id;
-	php_slot->power_state_check     = false;
 	php_slot->slot.ops              = &php_slot_ops;
 	php_slot->slot.info             = &php_slot->slot_info;
 	php_slot->slot.private          = php_slot;
