@@ -83,6 +83,11 @@
 			linux,code = <ASPEED_GPIO(Q, 7)>;
 		};
 	};
+
+	iio-hwmon-battery {
+		compatible = "iio-hwmon";
+		io-channels = <&adc 12>;
+	};
 };
 
 #include "ibm-power9-cfam.dtsi"
@@ -236,6 +241,12 @@
 		output-low;
 		line-name = "seq_cont";
 	};
+	rtc_adc_en {
+		gpio-hog;
+		gpios = <ASPEED_GPIO(R, 3) GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "rtc_adc_en";
+	};
 };
 
 &vuart {
@@ -301,6 +312,10 @@
 };
 
 &vhub {
+	status = "okay";
+};
+
+&adc {
 	status = "okay";
 };
 
