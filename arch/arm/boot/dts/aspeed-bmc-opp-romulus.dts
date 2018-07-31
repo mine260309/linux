@@ -84,9 +84,23 @@
 		};
 	};
 
-	iio-hwmon-battery {
-		compatible = "iio-hwmon";
+	adc_mux: mux-controller {
+		compatible = "gpio-mux";
+		#mux-control-cells = <0>;
+
+		mux-gpios = <&gpio ASPEED_GPIO(R, 3) GPIO_ACTIVE_HIGH>;
+		idle-state = <0>;
+	};
+
+	rtcadcmux {
+		compatible = "io-channel-mux";
 		io-channels = <&adc 12>;
+		io-channel-names = "parent";
+		idle-state = <0>;
+
+		mux-controls = <&adc_mux>;
+
+		channels = "", "battery_voltage";
 	};
 };
 
@@ -240,12 +254,6 @@
 		gpios = <ASPEED_GPIO(S, 7) GPIO_ACTIVE_HIGH>;
 		output-low;
 		line-name = "seq_cont";
-	};
-	rtc_adc_en {
-		gpio-hog;
-		gpios = <ASPEED_GPIO(R, 3) GPIO_ACTIVE_HIGH>;
-		output-high;
-		line-name = "rtc_adc_en";
 	};
 };
 

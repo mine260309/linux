@@ -101,6 +101,9 @@ static int aspeed_adc_read_raw(struct iio_dev *indio_dev,
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
+		// Suggested by Aspeed, that 1ms delay before ADC read
+		// to make sure it measures the samples
+		mdelay(1);
 		*val = readw(data->base + chan->address);
 		return IIO_VAL_INT;
 
