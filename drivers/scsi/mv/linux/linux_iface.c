@@ -1237,7 +1237,8 @@ static int mv_ial_ht_ata_cmd(struct scsi_device *scsidev, void __user *arg)
 {
 	int rc = 0;
      	u8 scsi_cmd[MAX_COMMAND_SIZE];
-      	u8 args[4] , *argbuf = NULL, *sensebuf = NULL;
+      	u8 args[4] , *argbuf = NULL/*, *sensebuf = NULL*/;
+        u8 sensebuf[SCSI_SENSE_BUFFERSIZE];
       	int argsize = 0;
       	enum dma_data_direction data_dir;
       	int cmd_result;
@@ -1259,11 +1260,11 @@ static int mv_ial_ht_ata_cmd(struct scsi_device *scsidev, void __user *arg)
 		memset(sensebuf, 0, SCSI_SENSE_BUFFERSIZE);
 	}
 #else
-	sensebuf = kzalloc(SCSI_SENSE_BUFFERSIZE, GFP_NOIO);
+//	sensebuf = kzalloc(SCSI_SENSE_BUFFERSIZE, GFP_NOIO);
 #endif 
 
-      	if (!sensebuf)
-          	return -ENOMEM;
+//      	if (!sensebuf)
+//          	return -ENOMEM;
   
       	memset(scsi_cmd, 0, sizeof(scsi_cmd));
       	if (args[3]) {
@@ -1371,7 +1372,7 @@ free_req:
 	scsi_release_request(sreq);
 #endif		
 error:
-      	if (sensebuf) kfree(sensebuf);
+//      	if (sensebuf) kfree(sensebuf);
       	if (argbuf) kfree(argbuf);
       	return rc;
 }
@@ -1395,7 +1396,8 @@ unsigned char excute_taskfile(struct scsi_device *dev,ide_task_request_t *req_ta
 {
 	int rc = 0;
      	u8 scsi_cmd[MAX_COMMAND_SIZE];
-      	u8 *sensebuf = NULL;
+//      	u8 *sensebuf = NULL;
+        u8 sensebuf[SCSI_SENSE_BUFFERSIZE];
       	int argsize=0;
 	enum dma_data_direction data_dir;
       	int cmd_result;
@@ -1412,10 +1414,10 @@ unsigned char excute_taskfile(struct scsi_device *dev,ide_task_request_t *req_ta
 		memset(sensebuf, 0, SCSI_SENSE_BUFFERSIZE);
 	}
 #else
-	sensebuf = kzalloc(SCSI_SENSE_BUFFERSIZE, GFP_NOIO);
+//	sensebuf = kzalloc(SCSI_SENSE_BUFFERSIZE, GFP_NOIO);
 #endif 
-      	if (!sensebuf)
-          	return -ENOMEM;
+//      	if (!sensebuf)
+//          	return -ENOMEM;
   
       	memset(scsi_cmd, 0, sizeof(scsi_cmd));
 
@@ -1494,7 +1496,7 @@ free_req:
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 14)
 	scsi_release_request(sreq);
 #endif		
-      	if (sensebuf) kfree(sensebuf);
+//      	if (sensebuf) kfree(sensebuf);
       	return rc;
 }
 u8 mv_do_taskfile_ioctl(struct scsi_device *dev,void __user *arg){

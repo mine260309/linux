@@ -1970,7 +1970,7 @@ err_shutdown_req:
 static enum blk_eh_timer_return mv_linux_timed_out(struct scsi_cmnd *cmd)
 {
 	MV_BOOLEAN ret = MV_TRUE;
-	return (ret)?BLK_EH_RESET_TIMER:BLK_EH_NOT_HANDLED;
+	return (ret)?BLK_EH_RESET_TIMER:BLK_EH_DONE;
 
 }
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 28)
@@ -2002,7 +2002,7 @@ static enum scsi_eh_timer_return mv_linux_timed_out(struct scsi_cmnd *cmd)
 static enum blk_eh_timer_return mv_linux_timed_out(struct scsi_cmnd *cmd)
 {
 	MV_BOOLEAN ret = MV_TRUE;
-	return (ret)?BLK_EH_RESET_TIMER:BLK_EH_NOT_HANDLED;
+	return (ret)?BLK_EH_RESET_TIMER:BLK_EH_DONE;
 
 }
 #endif
