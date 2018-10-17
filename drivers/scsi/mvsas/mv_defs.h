@@ -38,7 +38,8 @@ enum chip_flavors {
 	chip_9445,
 	chip_9485,
 	chip_1300,
-	chip_1320
+	chip_1320,
+	chip_1475
 };
 
 /* driver compile-time configuration */

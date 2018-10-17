@@ -39,6 +39,7 @@ static const struct mvs_chip_info mvs_chips[] = {
 	[chip_9485] =	{ 2, 4, 0x800, 17, 64, 8, 11, &mvs_94xx_dispatch, },
 	[chip_1300] =	{ 1, 4, 0x400, 17, 16, 6,  9, &mvs_64xx_dispatch, },
 	[chip_1320] =	{ 2, 4, 0x800, 17, 64, 8,  9, &mvs_94xx_dispatch, },
+	[chip_1475] =	{ 2, 8, 0x800, 17, /*128??*/, 128, 8,  13, &mvs_94xx_dispatch, },
 };
 
 struct device_attribute *mvst_host_attrs[];
@@ -703,6 +704,7 @@ static struct pci_device_id mvs_pci_table[] = {
 		.driver_data	= chip_9445,
 	},
 	{ PCI_VDEVICE(MARVELL_EXT, 0x9485), chip_9485 }, /* Marvell 9480/9485 (any vendor/model) */
+	{ PCI_VDEVICE(MARVELL_EXT, 0x1475), chip_1475 }, /* Marvell 1475 (any vendor/model) */
 	{ PCI_VDEVICE(OCZ, 0x1021), chip_9485}, /* OCZ RevoDrive3 */
 	{ PCI_VDEVICE(OCZ, 0x1022), chip_9485}, /* OCZ RevoDrive3/zDriveR4 (exact model unknown) */
 	{ PCI_VDEVICE(OCZ, 0x1040), chip_9485}, /* OCZ RevoDrive3/zDriveR4 (exact model unknown) */
