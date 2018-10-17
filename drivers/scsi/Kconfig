@@ -307,6 +307,12 @@ menuconfig SCSI_LOWLEVEL
 	default y
 
 if SCSI_LOWLEVEL && SCSI
+config SCSI_MV_94xx
+        tristate "Marvell Storage Controller 1415"
+        depends on SCSI && BLK_DEV_SD
+        help
+                Provides support for Marvell 14xx Storage Controller series.
+
 
 config ISCSI_TCP
 	tristate "iSCSI Initiator over TCP/IP"
