@@ -39,7 +39,7 @@ static const struct mvs_chip_info mvs_chips[] = {
 	[chip_9485] =	{ 2, 4, 0x800, 17, 64, 8, 11, &mvs_94xx_dispatch, },
 	[chip_1300] =	{ 1, 4, 0x400, 17, 16, 6,  9, &mvs_64xx_dispatch, },
 	[chip_1320] =	{ 2, 4, 0x800, 17, 64, 8,  9, &mvs_94xx_dispatch, },
-	[chip_1475] =	{ 2, 8, 0x800, 17, /*128??*/, 128, 8,  13, &mvs_94xx_dispatch, },
+	[chip_1475] =	{ 2, 8, 0x800, 17, /*128??*/ 128, 8,  13, &mvs_94xx_dispatch, },
 };
 
 struct device_attribute *mvst_host_attrs[];
@@ -313,6 +313,7 @@ err_out:
 
 int mvs_ioremap(struct mvs_info *mvi, int bar, int bar_ex)
 {
+printk(KERN_INFO "MINEDBG: %s:%d bar %d, bar_ex %d\n", __FILE__, __LINE__, bar, bar_ex);
 	unsigned long res_start, res_len, res_flag, res_flag_ex = 0;
 	struct pci_dev *pdev = mvi->pdev;
 	if (bar_ex != -1) {
@@ -333,18 +334,23 @@ int mvs_ioremap(struct mvs_info *mvi, int bar, int bar_ex)
 			goto err_out;
 	}
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	res_start = pci_resource_start(pdev, bar);
 	res_len = pci_resource_len(pdev, bar);
+printk(KERN_INFO "MINEDBG: %s:%d res_start %lu, len %lu\n", __FILE__, __LINE__, res_start, res_len);
 	if (!res_start || !res_len) {
 		iounmap(mvi->regs_ex);
 		mvi->regs_ex = NULL;
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 		goto err_out;
 	}
 
 	res_flag = pci_resource_flags(pdev, bar);
 	mvi->regs = ioremap(res_start, res_len);
 
+printk(KERN_INFO "MINEDBG: %s:%d res_flag %lu, regs %p\n", __FILE__, __LINE__, res_flag, mvi->regs);
 	if (!mvi->regs) {
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 		if (mvi->regs_ex && (res_flag_ex & IORESOURCE_MEM))
 			iounmap(mvi->regs_ex);
 		mvi->regs_ex = NULL;
@@ -368,12 +374,17 @@ static struct mvs_info *mvs_pci_alloc(struct pci_dev *pdev,
 	struct mvs_info *mvi = NULL;
 	struct sas_ha_struct *sha = SHOST_TO_SAS_HA(shost);
 
+printk(KERN_INFO "MINEDBG: %s:%d %s id %u\n", __FILE__, __LINE__, __func__, id);
+printk(KERN_INFO "MINEDBG: %s:%d Try to alloc %u bytes\n", __FILE__, __LINE__,
+    sizeof(*mvi) + (1L << mvs_chips[ent->driver_data].slot_width) * sizeof(struct mvs_slot_info));
+
 	mvi = kzalloc(sizeof(*mvi) +
 		(1L << mvs_chips[ent->driver_data].slot_width) *
 		sizeof(struct mvs_slot_info), GFP_KERNEL);
 	if (!mvi)
 		return NULL;
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	mvi->pdev = pdev;
 	mvi->dev = &pdev->dev;
 	mvi->chip_id = ent->driver_data;
@@ -387,12 +398,16 @@ static struct mvs_info *mvs_pci_alloc(struct pci_dev *pdev,
 	mvi->sas = sha;
 	mvi->shost = shost;
 
+printk(KERN_INFO "MINEDBG: %s:%d chip_id 0x%x, n_phy %d\n", __FILE__, __LINE__, mvi->chip_id, mvi->chip->n_phy);
 	mvi->tags = kzalloc(MVS_CHIP_SLOT_SZ>>3, GFP_KERNEL);
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	if (!mvi->tags)
 		goto err_out;
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	if (MVS_CHIP_DISP->chip_ioremap(mvi))
 		goto err_out;
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	if (!mvs_alloc(mvi, shost))
 		return mvi;
 err_out:
@@ -533,26 +548,33 @@ static int mvs_pci_init(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	dev_printk(KERN_INFO, &pdev->dev,
 		"mvsas: driver version %s\n", DRV_VERSION);
+
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	rc = pci_enable_device(pdev);
 	if (rc)
 		goto err_out_enable;
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	pci_set_master(pdev);
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	rc = pci_request_regions(pdev, DRV_NAME);
 	if (rc)
 		goto err_out_disable;
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	rc = pci_go_64(pdev);
 	if (rc)
 		goto err_out_regions;
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	shost = scsi_host_alloc(&mvs_sht, sizeof(void *));
 	if (!shost) {
 		rc = -ENOMEM;
 		goto err_out_regions;
 	}
 
+printk(KERN_INFO "MINEDBG: %s:%d ent->driver_data: %d\n", __FILE__, __LINE__, ent->driver_data);
 	chip = &mvs_chips[ent->driver_data];
 	SHOST_TO_SAS_HA(shost) =
 		kcalloc(1, sizeof(struct sas_ha_struct), GFP_KERNEL);
@@ -562,6 +584,7 @@ static int mvs_pci_init(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto err_out_regions;
 	}
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	rc = mvs_prep_sas_ha_init(shost, chip);
 	if (rc) {
 		scsi_host_put(shost);
@@ -569,52 +592,69 @@ static int mvs_pci_init(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto err_out_regions;
 	}
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	pci_set_drvdata(pdev, SHOST_TO_SAS_HA(shost));
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	do {
 		mvi = mvs_pci_alloc(pdev, ent, shost, nhost);
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 		if (!mvi) {
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 			rc = -ENOMEM;
 			goto err_out_regions;
 		}
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 		memset(&mvi->hba_info_param, 0xFF,
 			sizeof(struct hba_info_page));
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 		mvs_init_sas_add(mvi);
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 		mvi->instance = nhost;
 		rc = MVS_CHIP_DISP->chip_init(mvi);
 		if (rc) {
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 			mvs_free(mvi);
 			goto err_out_regions;
 		}
 		nhost++;
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	} while (nhost < chip->n_host);
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	mpi = (struct mvs_prv_info *)(SHOST_TO_SAS_HA(shost)->lldd_ha);
 #ifdef CONFIG_SCSI_MVSAS_TASKLET
 	tasklet_init(&(mpi->mv_tasklet), mvs_tasklet,
 		     (unsigned long)SHOST_TO_SAS_HA(shost));
 #endif
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	mvs_post_sas_ha_init(shost, chip);
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	rc = scsi_add_host(shost, &pdev->dev);
 	if (rc)
 		goto err_out_shost;
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	rc = sas_register_ha(SHOST_TO_SAS_HA(shost));
 	if (rc)
 		goto err_out_shost;
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	rc = request_irq(pdev->irq, irq_handler, IRQF_SHARED,
 		DRV_NAME, SHOST_TO_SAS_HA(shost));
 	if (rc)
 		goto err_not_sas;
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	MVS_CHIP_DISP->interrupt_enable(mvi);
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	scsi_scan_host(mvi->shost);
 
+printk(KERN_INFO "MINEDBG: %s:%d\n", __FILE__, __LINE__);
 	return 0;
 
 err_not_sas:

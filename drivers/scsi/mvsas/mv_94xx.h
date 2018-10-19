@@ -120,7 +120,7 @@ enum pci_cfg_registers {
 	PCR_PHY_CTL		= 0x40,
 	PCR_PHY_CTL2		= 0x90,
 	PCR_DEV_CTRL		= 0x78,
-	PCR_LINK_STAT		= 0x82,
+	PCR_LINK_STAT		= 0xF0,
 };
 
 /*  SAS/SATA Vendor Specific Port Registers */

@@ -585,7 +585,7 @@ static int mvs_94xx_init(struct mvs_info *mvi)
 
 static int mvs_94xx_ioremap(struct mvs_info *mvi)
 {
-	if (!mvs_ioremap(mvi, 2, -1)) {
+	if (!mvs_ioremap(mvi, 4, -1)) {
 		mvi->regs_ex = mvi->regs + 0x10200;
 		mvi->regs += 0x20000;
 		if (mvi->id == 1)

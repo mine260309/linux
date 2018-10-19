@@ -247,13 +247,14 @@ static inline void mvs_show_pcie_usage(struct mvs_info *mvi)
 		"UnKnown",
 		"2.5",
 		"5.0",
+		"8.0",
 	};
 	if (mvi->flags & MVF_FLAG_SOC || mvi->id > 0)
 		return;
 
 	pci_read_config_word(mvi->pdev, PCR_LINK_STAT, &link_stat);
 	link_spd = (link_stat & PLS_LINK_SPD) >> PLS_LINK_SPD_OFFS;
-	if (link_spd >= 3)
+	if (link_spd >= 4)
 		link_spd = 0;
 	dev_printk(KERN_INFO, mvi->dev,
 		"mvsas: PCI-E x%u, Bandwidth Usage: %s Gbps\n",
