@@ -901,8 +901,30 @@ static void pnv_php_enable_irq(struct pnv_php_slot *php_slot)
 	}
 }
 
+static int pnv_php_msg_hotplug_event(struct notifier_block *nb,
+				     unsigned long msg_type, void *_msg);
+static struct notifier_block pnv_php_msg_hotplug = {
+	.notifier_call	= pnv_php_msg_hotplug_event,
+	.next		= NULL,
+	.priority	= 0,
+};
+
+static int pnv_php_msg_hotplug_event(struct notifier_block *nb,
+				     unsigned long msg_type, void *_msg)
+{
+	struct opal_msg *msg = _msg;
+
+	if (msg_type != OPAL_MSG_HOTPLUG)
+		return 0;
+
+	printk(KERN_WARNING "MINEDBG: %s:%d %s got an hotplug event: 0x%llx 0x%llx\n",
+			__FILE__, __LINE__, __func__, msg->params[0], msg->params[1]);
+	return 0;
+}
+
 static int pnv_php_register_one(struct device_node *dn)
 {
+	static bool is_message_subscribed = false;
 	struct pnv_php_slot *php_slot;
 	u32 prop32;
 	int ret;
@@ -940,6 +962,18 @@ static int pnv_php_register_one(struct device_node *dn)
 	 * slot in the registered state so we can try online it later.
 	 */
 	pnv_php_enable(php_slot, true);
+
+	ret = of_property_read_u32(dn, "ibm,use-hotplug-event", &prop32);
+	if (!ret && prop32) {
+		printk(KERN_WARNING "MINEDBG: %s:%d %s subscribe hotplug event...\n", __FILE__, __LINE__, __func__);
+		// TODO: FIXME: this needs to check if it's root complex, and only subscribe opal message when it is
+		// And likely it should only register once
+		if (!is_message_subscribed) {
+			opal_message_notifier_register(OPAL_MSG_HOTPLUG, &pnv_php_msg_hotplug);
+			is_message_subscribed = true;
+		}
+		return 0;
+	}
 
 	/* Enable interrupt if the slot supports surprise hotplug */
 	ret = of_property_read_u32(dn, "ibm,slot-surprise-pluggable", &prop32);
