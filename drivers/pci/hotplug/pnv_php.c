@@ -909,16 +909,88 @@ static struct notifier_block pnv_php_msg_hotplug = {
 	.priority	= 0,
 };
 
+struct pnv_php_slot *pnv_php_find_slot_by_id(uint64_t id)
+{
+	struct pnv_php_slot *tmp;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pnv_php_lock, flags);
+	list_for_each_entry(tmp, &pnv_php_slot_list, link) {
+		if (tmp->id == id) {
+			spin_unlock_irqrestore(&pnv_php_lock, flags);
+			return tmp;
+		}
+	}
+	spin_unlock_irqrestore(&pnv_php_lock, flags);
+
+	return NULL;
+}
+
 static int pnv_php_msg_hotplug_event(struct notifier_block *nb,
 				     unsigned long msg_type, void *_msg)
 {
 	struct opal_msg *msg = _msg;
+	uint64_t id, added;
+	struct pnv_php_slot *php_slot;
+	struct pci_dev *pchild, *pdev;
+	struct eeh_dev *edev;
+	struct eeh_pe *pe;
+	struct pnv_php_event *event;
+	unsigned long flags;
 
 	if (msg_type != OPAL_MSG_HOTPLUG)
 		return 0;
 
-	printk(KERN_WARNING "MINEDBG: %s:%d %s got an hotplug event: 0x%llx 0x%llx\n",
-			__FILE__, __LINE__, __func__, msg->params[0], msg->params[1]);
+	id = be64_to_cpu(msg->params[0]);
+	added = be64_to_cpu(msg->params[1]);
+	php_slot = pnv_php_find_slot_by_id(id);
+	pdev = php_slot->pdev;
+
+	printk(KERN_WARNING "MINEDBG: %s:%d %s id 0x%llx added 0x%llx\n",
+			__FILE__, __LINE__, __func__, id, added);
+	printk(KERN_WARNING "MINEDBG: %s:%d %s php_slot %p, pdev %p\n",
+			__FILE__, __LINE__, __func__, php_slot, pdev);
+
+	/* Freeze the removed PE to avoid unexpected error reporting */
+	if (!added) {
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d\n", __FILE__, __LINE__, __func__, __LINE__);
+		pchild = list_first_entry_or_null(&php_slot->bus->devices,
+						  struct pci_dev, bus_list);
+	printk(KERN_WARNING "MINEDBG: %s:%d %s pchild %p\n", __FILE__, __LINE__, __func__, pchild);
+		edev = pchild ? pci_dev_to_eeh_dev(pchild) : NULL;
+	printk(KERN_WARNING "MINEDBG: %s:%d %s edev %p\n", __FILE__, __LINE__, __func__, edev);
+		pe = edev ? edev->pe : NULL;
+	printk(KERN_WARNING "MINEDBG: %s:%d %s pe %p\n", __FILE__, __LINE__, __func__, pe);
+		if (pe) {
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d in pe\n", __FILE__, __LINE__, __func__, __LINE__);
+			eeh_serialize_lock(&flags);
+			eeh_pe_state_mark(pe, EEH_PE_ISOLATED);
+			eeh_serialize_unlock(flags);
+			eeh_pe_set_option(pe, EEH_OPT_FREEZE_PE);
+		}
+	}
+
+	printk(KERN_WARNING "MINEDBG: %s:%d %s %d to kzalloc\n", __FILE__, __LINE__, __func__, __LINE__);
+	/*
+	 * The PE is left in frozen state if the event is missed. It's
+	 * fine as the PCI devices (PE) aren't functional any more.
+	 */
+	event = kzalloc(sizeof(*event), GFP_ATOMIC);
+	if (!event) {
+		pci_warn(pdev, "PCI slot [%s] missed hotplug event %llu\n",
+			 php_slot->name, added);
+		return 0;
+	}
+
+	printk(KERN_WARNING "MINEDBG: %s:%d %s %d to init work\n", __FILE__, __LINE__, __func__, __LINE__);
+
+	pci_info(pdev, "PCI slot [%s] %s\n",
+		 php_slot->name, added ? "added" : "removed");
+	INIT_WORK(&event->work, pnv_php_event_handler);
+	event->added = added;
+	event->php_slot = php_slot;
+	printk(KERN_WARNING "MINEDBG: %s:%d %s %d to queue work\n", __FILE__, __LINE__, __func__, __LINE__);
+	queue_work(php_slot->wq, &event->work);
 	return 0;
 }
 
@@ -965,12 +1037,18 @@ static int pnv_php_register_one(struct device_node *dn)
 
 	ret = of_property_read_u32(dn, "ibm,use-hotplug-event", &prop32);
 	if (!ret && prop32) {
-		printk(KERN_WARNING "MINEDBG: %s:%d %s subscribe hotplug event...\n", __FILE__, __LINE__, __func__);
+		printk(KERN_WARNING "MINEDBG: %s:%d %s subscribe hotplug event on slot %p\n", __FILE__, __LINE__, __func__, php_slot);
 		// TODO: FIXME: this needs to check if it's root complex, and only subscribe opal message when it is
 		// And likely it should only register once
 		if (!is_message_subscribed) {
 			opal_message_notifier_register(OPAL_MSG_HOTPLUG, &pnv_php_msg_hotplug);
 			is_message_subscribed = true;
+		}
+		/* Allocate workqueue */
+		php_slot->wq = alloc_workqueue("pciehp-%s", 0, 0, php_slot->name);
+		if (!php_slot->wq) {
+			pci_warn(php_slot->pdev, "Cannot alloc workqueue\n");
+			goto free_slot;
 		}
 		return 0;
 	}
