@@ -758,6 +758,7 @@ static irqreturn_t pnv_php_interrupt(int irq, void *data)
 	if (sts & PCI_EXP_SLTSTA_DLLSC) {
 		pcie_capability_read_word(pdev, PCI_EXP_LNKSTA, &lsts);
 		added = !!(lsts & PCI_EXP_LNKSTA_DLLLA);
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d check LNKSTA %d\n", __FILE__, __LINE__, __func__, __LINE__, added);
 	} else if (!(php_slot->flags & PNV_PHP_FLAG_BROKEN_PDC) &&
 		   (sts & PCI_EXP_SLTSTA_PDC)) {
 		ret = pnv_pci_get_presence_state(php_slot->id, &presence);
@@ -768,16 +769,22 @@ static irqreturn_t pnv_php_interrupt(int irq, void *data)
 		}
 
 		added = !!(presence == OPAL_PCI_SLOT_PRESENT);
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d check SLOT_PRESENT %d\n", __FILE__, __LINE__, __func__, __LINE__, added);
 	} else {
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d in else\n", __FILE__, __LINE__, __func__, __LINE__);
 		return IRQ_NONE;
 	}
 
 	/* Freeze the removed PE to avoid unexpected error reporting */
 	if (!added) {
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d\n", __FILE__, __LINE__, __func__, __LINE__);
 		pchild = list_first_entry_or_null(&php_slot->bus->devices,
 						  struct pci_dev, bus_list);
+	printk(KERN_WARNING "MINEDBG: %s:%d %s pchild %p\n", __FILE__, __LINE__, __func__, pchild);
 		edev = pchild ? pci_dev_to_eeh_dev(pchild) : NULL;
+	printk(KERN_WARNING "MINEDBG: %s:%d %s edev %p\n", __FILE__, __LINE__, __func__, edev);
 		pe = edev ? edev->pe : NULL;
+	printk(KERN_WARNING "MINEDBG: %s:%d %s pe %p\n", __FILE__, __LINE__, __func__, pe);
 		if (pe) {
 			eeh_serialize_lock(&flags);
 			eeh_pe_state_mark(pe, EEH_PE_ISOLATED);
@@ -802,6 +809,7 @@ static irqreturn_t pnv_php_interrupt(int irq, void *data)
 	INIT_WORK(&event->work, pnv_php_event_handler);
 	event->added = added;
 	event->php_slot = php_slot;
+	printk(KERN_WARNING "MINEDBG: %s:%d %s %d to queue work\n", __FILE__, __LINE__, __func__, __LINE__);
 	queue_work(php_slot->wq, &event->work);
 
 	return IRQ_HANDLED;
@@ -938,6 +946,11 @@ static int pnv_php_msg_hotplug_event(struct notifier_block *nb,
 	struct pnv_php_event *event;
 	unsigned long flags;
 
+	u16 sts, lsts;
+	u8 presence;
+	bool added_b;
+	int ret;
+
 	if (msg_type != OPAL_MSG_HOTPLUG)
 		return 0;
 
@@ -950,6 +963,33 @@ static int pnv_php_msg_hotplug_event(struct notifier_block *nb,
 			__FILE__, __LINE__, __func__, id, added);
 	printk(KERN_WARNING "MINEDBG: %s:%d %s php_slot %p, pdev %p\n",
 			__FILE__, __LINE__, __func__, php_slot, pdev);
+
+	pcie_capability_read_word(pdev, PCI_EXP_SLTSTA, &sts);
+
+	pr_err("%s: pdc %d lldc %d\n", php_slot->name,
+		!!(sts & PCI_EXP_SLTSTA_PDC), !!(sts & PCI_EXP_SLTSTA_DLLSC));
+
+	sts &= (PCI_EXP_SLTSTA_PDC | PCI_EXP_SLTSTA_DLLSC);
+	pcie_capability_write_word(pdev, PCI_EXP_SLTSTA, sts);
+
+	if (sts & PCI_EXP_SLTSTA_DLLSC) {
+		pcie_capability_read_word(pdev, PCI_EXP_LNKSTA, &lsts);
+		added_b = !!(lsts & PCI_EXP_LNKSTA_DLLLA);
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d check LNKSTA %d\n", __FILE__, __LINE__, __func__, __LINE__, added_b);
+	} else if (!(php_slot->flags & PNV_PHP_FLAG_BROKEN_PDC) &&
+		   (sts & PCI_EXP_SLTSTA_PDC)) {
+		ret = pnv_pci_get_presence_state(php_slot->id, &presence);
+		if (ret) {
+			pci_warn(pdev, "PCI slot [%s] error %d getting presence (0x%04x), to retry the operation.\n",
+				 php_slot->name, ret, sts);
+			return 0;
+		}
+
+		added_b = !!(presence == OPAL_PCI_SLOT_PRESENT);
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d check SLOT_PRESENT %d\n", __FILE__, __LINE__, __func__, __LINE__, added_b);
+	} else {
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d in else\n", __FILE__, __LINE__, __func__, __LINE__);
+	}
 
 	/* Freeze the removed PE to avoid unexpected error reporting */
 	if (!added) {
