@@ -426,6 +426,52 @@ static int pnv_php_set_attention_state(struct hotplug_slot *slot, u8 state)
 	return 0;
 }
 
+static void dump_php_slot(struct pnv_php_slot *php_slot)
+{
+	pr_warn("MINEDBG: dump php slot: %p\n", php_slot);
+	pr_warn("MINEDBG:   id %llx\n", php_slot->id);
+	pr_warn("MINEDBG:   name %s\n", php_slot->name);
+	pr_warn("MINEDBG:   slot_no %d\n", php_slot->slot_no);
+	pr_warn("MINEDBG:   flags %x\n", php_slot->flags);
+	pr_warn("MINEDBG:   state %d\n", php_slot->state);
+	pr_warn("MINEDBG:   irq %d\n", php_slot->irq);
+	pr_warn("MINEDBG:   dn %p\n", php_slot->dn);
+	if (php_slot->dn) {
+		pr_warn("MINEDBG:     dn->name %s\n", php_slot->dn->name);
+		pr_warn("MINEDBG:     dn->type %s\n", php_slot->dn->type);
+		pr_warn("MINEDBG:     dn->full_name %s\n", php_slot->dn->full_name);
+		pr_warn("MINEDBG:     dn->data %p\n", php_slot->dn->data);
+		pr_warn("MINEDBG:     dn->child %p\n", php_slot->dn->child);
+		if (php_slot->dn->child) {
+			pr_warn("MINEDBG:       dn->child->name %s\n", php_slot->dn->child->name);
+			pr_warn("MINEDBG:       dn->child->type %s\n", php_slot->dn->child->type);
+			pr_warn("MINEDBG:       dn->child->full_name %s\n", php_slot->dn->child->full_name);
+			pr_warn("MINEDBG:       dn->child->data %p\n", php_slot->dn->child->data);
+		}
+	}
+	pr_warn("MINEDBG:   pdev %p\n", php_slot->pdev);
+	if (php_slot->pdev) {
+		pr_warn("MINEDBG:     pdev->bus %p\n", php_slot->pdev->bus);
+		pr_warn("MINEDBG:     pdev->devfn %x\n", php_slot->pdev->devfn);
+		pr_warn("MINEDBG:     pdev->vendor %x\n", php_slot->pdev->vendor);
+		pr_warn("MINEDBG:     pdev->device %x\n", php_slot->pdev->device);
+	}
+	pr_warn("MINEDBG:   bus %p\n", php_slot->bus);
+	if (php_slot->bus) {
+		pr_warn("MINEDBG:     bus->number %x\n", php_slot->bus->number);
+		pr_warn("MINEDBG:     bus->primary %x\n", php_slot->bus->primary);
+		pr_warn("MINEDBG:     bus->name %s\n", php_slot->bus->name);
+		pr_warn("MINEDBG:     bus->is_added %d\n", php_slot->bus->is_added);
+		pr_warn("MINEDBG:     bus->dev.of_node %p\n", php_slot->bus->dev.of_node);
+		if (php_slot->bus->dev.of_node) {
+			pr_warn("MINEDBG:       php_slot->bus->dev.of_node->name %s\n", php_slot->bus->dev.of_node->name);
+			pr_warn("MINEDBG:       php_slot->bus->dev.of_node->type %s\n", php_slot->bus->dev.of_node->type);
+			pr_warn("MINEDBG:       php_slot->bus->dev.of_node->full_name %s\n", php_slot->bus->dev.of_node->full_name);
+			pr_warn("MINEDBG:       php_slot->bus->dev.of_node->data %p\n", php_slot->bus->dev.of_node->data);
+		}
+	}
+}
+
 static int pnv_php_enable(struct pnv_php_slot *php_slot, bool initial)
 {
 	struct hotplug_slot *slot = &php_slot->slot;
@@ -473,21 +519,28 @@ static int pnv_php_enable(struct pnv_php_slot *php_slot, bool initial)
 		return 0;
 	}
 
+	dump_php_slot(php_slot);
+
 	dev_warn(&php_slot->pdev->dev, "powering on...\n");
 	ret = pnv_php_set_slot_power_state(slot, OPAL_PCI_SLOT_POWER_ON);
+	dev_warn(&php_slot->pdev->dev, "MINEDBG: %s:%d after power slot on...\n", __func__, __LINE__);
 	if (ret) {
 		dev_warn(&php_slot->pdev->dev, "after set_power_state %d (%d)\n", power, ret);
 		return ret;
 	}
 
+	dump_php_slot(php_slot);
+
 	pci_lock_rescan_remove();
 	pci_hp_add_devices(php_slot->bus);
 	pci_unlock_rescan_remove();
 
+	dev_warn(&php_slot->pdev->dev, "MINEDBG: %s:%d after pci_hp_add_devices...\n", __func__, __LINE__);
 	php_slot->state = PNV_PHP_STATE_POPULATED;
 	dev_warn(&php_slot->pdev->dev, "populated!\n");
 
 	pnv_php_register(php_slot->dn);
+	dev_warn(&php_slot->pdev->dev, "MINEDBG: %s:%d after php_register...\n", __func__, __LINE__);
 
 	return 0;
 }
@@ -1077,7 +1130,7 @@ static int pnv_php_register_one(struct device_node *dn)
 
 	ret = of_property_read_u32(dn, "ibm,use-hotplug-event", &prop32);
 	if (!ret && prop32) {
-		printk(KERN_WARNING "MINEDBG: %s:%d %s subscribe hotplug event on slot %p\n", __FILE__, __LINE__, __func__, php_slot);
+		printk(KERN_WARNING "MINEDBG: %s:%d %s subscribe hotplug event on slot %s\n", __FILE__, __LINE__, __func__, php_slot->name);
 		// TODO: FIXME: this needs to check if it's root complex, and only subscribe opal message when it is
 		// And likely it should only register once
 		if (!is_message_subscribed) {
@@ -1096,7 +1149,10 @@ static int pnv_php_register_one(struct device_node *dn)
 	/* Enable interrupt if the slot supports surprise hotplug */
 	ret = of_property_read_u32(dn, "ibm,slot-surprise-pluggable", &prop32);
 	if (!ret && prop32)
+	{
+		printk(KERN_WARNING "MINEDBG: %s:%d %s subscribe hotplug irq on slot %s\n", __FILE__, __LINE__, __func__, php_slot->name);
 		pnv_php_enable_irq(php_slot);
+	}
 
 	return 0;
 

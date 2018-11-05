@@ -115,13 +115,18 @@ void pci_hp_add_devices(struct pci_bus *bus)
 
 	mode = PCI_PROBE_NORMAL;
 	if (phb->controller_ops.probe_mode)
+	{
+		pr_warn("MINEDBG: %s:%d in probe_mode\n", __func__, __LINE__);
 		mode = phb->controller_ops.probe_mode(bus);
+	}
 
 	if (mode == PCI_PROBE_DEVTREE) {
 		/* use ofdt-based probe */
+		pr_warn("MINEDBG: %s:%d in probe devtree\n", __func__, __LINE__);
 		of_rescan_bus(dn, bus);
 	} else if (mode == PCI_PROBE_NORMAL &&
 		   dn->child && PCI_DN(dn->child)) {
+		pr_warn("MINEDBG: %s:%d in else\n", __func__, __LINE__);
 		/*
 		 * Use legacy probe. In the partial hotplug case, we
 		 * probably have grandchildren devices unplugged. So
@@ -145,6 +150,7 @@ void pci_hp_add_devices(struct pci_bus *bus)
 		for_each_pci_bridge(dev, bus)
 			max = pci_scan_bridge(bus, dev, max, 1);
 	}
+	pr_warn("MINEDBG: %s:%d after else\n", __func__, __LINE__);
 	pcibios_finish_adding_to_bus(bus);
 }
 EXPORT_SYMBOL_GPL(pci_hp_add_devices);
