@@ -18,6 +18,8 @@
 #define DRIVER_AUTHOR	"Gavin Shan, IBM Corporation"
 #define DRIVER_DESC	"PowerPC PowerNV PCI Hotplug Driver"
 
+extern int pnv_eeh_phb_reset(struct pci_controller *hose, int option);
+
 struct pnv_php_event {
 	bool			added;
 	struct pnv_php_slot	*php_slot;
@@ -773,6 +775,25 @@ static int pnv_php_enable_msix(struct pnv_php_slot *php_slot)
 	return entry.vector;
 }
 
+static void pnv_php_opal_event_handler(struct work_struct *work)
+{
+	struct pnv_php_event *event =
+		container_of(work, struct pnv_php_event, work);
+	struct pnv_php_slot *php_slot = event->php_slot;
+	struct pci_controller *hose = pci_bus_to_host(php_slot->bus);
+
+	if (event->added) {
+		printk(KERN_WARNING "MINEDBG: %s:%d %s %d Issue PHB reset...\n", __FILE__, __LINE__, __func__, __LINE__);
+		pnv_eeh_phb_reset(hose, EEH_RESET_FUNDAMENTAL);
+		pnv_eeh_phb_reset(hose, EEH_RESET_DEACTIVATE);
+		pnv_php_enable_slot(&php_slot->slot);
+	}
+	else
+		pnv_php_disable_slot(&php_slot->slot);
+
+	kfree(event);
+}
+
 static void pnv_php_event_handler(struct work_struct *work)
 {
 	struct pnv_php_event *event =
@@ -987,6 +1008,8 @@ struct pnv_php_slot *pnv_php_find_slot_by_id(uint64_t id)
 	return NULL;
 }
 
+extern int pnv_eeh_phb_reset(struct pci_controller *hose, int option);
+
 static int pnv_php_msg_hotplug_event(struct notifier_block *nb,
 				     unsigned long msg_type, void *_msg)
 {
@@ -1079,7 +1102,7 @@ static int pnv_php_msg_hotplug_event(struct notifier_block *nb,
 
 	pci_info(pdev, "PCI slot [%s] %s\n",
 		 php_slot->name, added ? "added" : "removed");
-	INIT_WORK(&event->work, pnv_php_event_handler);
+	INIT_WORK(&event->work, pnv_php_opal_event_handler);
 	event->added = added;
 	event->php_slot = php_slot;
 	printk(KERN_WARNING "MINEDBG: %s:%d %s %d to queue work\n", __FILE__, __LINE__, __func__, __LINE__);
