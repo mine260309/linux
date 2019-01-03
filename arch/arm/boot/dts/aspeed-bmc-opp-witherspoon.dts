@@ -28,7 +28,7 @@
 		};
 
 		gfx_memory: framebuffer {
-			size = <0x01000000>;
+			size = <0x04000000>;
 			alignment = <0x01000000>;
 			compatible = "shared-dma-pool";
 			reusable;
@@ -632,6 +632,15 @@
 &gfx {
 	status = "okay";
 	memory-region = <&gfx_memory>;
+};
+
+&video {
+	status = "okay";
+	memory-region = <&gfx_memory>;
+};
+
+&vhub {
+	status = "okay";
 };
 
 &pinctrl {
